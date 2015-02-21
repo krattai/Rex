@@ -934,7 +934,7 @@ Mount devices.
    mount "/dev/sda5", "/tmp";
    mount "/dev/sda6", "/mnt/sda6",
           ensure    => "present",
-          fs        => "ext3",
+          type      => "ext3",
           options   => [qw/noatime async/],
           on_change => sub { say "device mounted"; };
    #
@@ -942,7 +942,7 @@ Mount devices.
  
    mount "/dev/sda6", "/mnt/sda6",
           ensure     => "persistent",
-          fs         => "ext3",
+          type       => "ext3",
           options    => [qw/noatime async/],
           on_change  => sub { say "device mounted"; };
  
@@ -957,6 +957,20 @@ Mount devices.
 sub mount {
   my ( $device, $mount_point, @options ) = @_;
   my $option = {@options};
+
+  if ( defined $option->{fs} ) {
+    if ( !defined $option->{type} ) {
+      $option->{type} = $option->{fs};
+    }
+    else {
+      Rex::Logger::info(
+        'Both fs and type options have been specified for mount command. Preferring type.',
+        'warn'
+      );
+    }
+  }
+
+  delete $option->{fs};
 
   Rex::get_current_connection()->{reporter}
     ->report_resource_start( type => "mount", name => "$mount_point" );
@@ -989,7 +1003,7 @@ sub mount {
 
     my $cmd = sprintf(
       "mount %s %s %s %s",
-      $option->{"fs"} ? "-t " . $option->{"fs"} : "", # file system
+      $option->{type} ? "-t " . $option->{type} : "", # file system
       $option->{"options"}
       ? " -o " . join( ",", @{ $option->{"options"} } )
       : "",
@@ -1008,14 +1022,14 @@ sub mount {
     }
 
     if ( exists $option->{persistent} ) {
-      if ( !exists $option->{fs} ) {
+      if ( !exists $option->{type} ) {
 
         # no fs given, so get it from mount output
         my ( $out, $err ) = $exec->exec("mount");
         my @output = split( /\r?\n/, $out );
         my ($line) = grep { /^$device/ } @output;
         my ( $_d, $_o, $_p, $_t, $fs_type ) = split( /\s+/, $line );
-        $option->{fs} = $fs_type;
+        $option->{type} = $fs_type;
 
         my ($_options) = ( $line =~ m/\((.+?)\)/ );
         $option->{options} = $_options;
@@ -1044,11 +1058,11 @@ sub mount {
           push( @new_content,
                 "LABEL="
               . $option->{label}
-              . "\t$mount_point\t$option->{fs}\t$mountops\t0 0\n" );
+              . "\t$mount_point\t$option->{type}\t$mountops\t0 0\n" );
         }
         else {
           push( @new_content,
-            "$device\t$mount_point\t$option->{fs}\t$mountops\t0 0\n" );
+            "$device\t$mount_point\t$option->{type}\t$mountops\t0 0\n" );
         }
       }
       else {
@@ -1056,11 +1070,12 @@ sub mount {
           push( @new_content,
                 "LABEL="
               . $option->{label}
-              . "\t$mount_point\t$option->{fs}\t$option->{options}\t0 0\n" );
+              . "\t$mount_point\t$option->{type}\t$option->{options}\t0 0\n" );
         }
         else {
           push( @new_content,
-            "$device\t$mount_point\t$option->{fs}\t$option->{options}\t0 0\n" );
+            "$device\t$mount_point\t$option->{type}\t$option->{options}\t0 0\n"
+          );
         }
       }
 
